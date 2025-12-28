@@ -1,0 +1,2072 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微信公众号 Markdown 编辑器</title>
+    <!-- highlight.js for code syntax highlighting -->
+    <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+    <style>
+        /* ==================== 全局重置和布局 ==================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --editor-bg: #f5f5f5;
+            --panel-bg: white;
+            --header-bg: #f8f9fa;
+            --border-color: #e0e0e0;
+            --primary-green: #07c160;
+            --primary-green-hover: #06ad56;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: var(--editor-bg);
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .editor-panel,
+        .preview-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--panel-bg);
+        }
+
+        .editor-panel {
+            border-right: 1px solid var(--border-color);
+        }
+
+        .panel-header {
+            height: 50px;
+            padding: 0 20px;
+            background: var(--header-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-sizing: border-box;
+        }
+
+        .panel-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .panel-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .template-selector {
+            padding: 5px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            font-size: 13px;
+            color: #333;
+            cursor: pointer;
+            outline: none;
+            min-width: 100px;
+            max-width: 140px;
+            transition: border-color 0.2s;
+        }
+
+        .template-selector:hover {
+            border-color: #007bff;
+        }
+
+        .template-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .template-label {
+            font-size: 13px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .btn {
+            padding: 5px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn-primary {
+            background: var(--primary-green);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-green-hover);
+        }
+
+        .btn-primary.copied {
+            background: #4CAF50;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%);
+            color: white;
+            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        #markdown-input {
+            flex: 1;
+            padding: 20px;
+            padding-top: 20px;
+            border: none;
+            outline: none;
+            resize: none;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .preview-content {
+            flex: 1;
+            padding: 20px;
+            padding-top: 20px;
+            overflow-y: auto;
+            background: white;
+        }
+
+        #preview {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* 强制对齐：移除预览区第一个元素的顶部边距 */
+        #preview>*:first-child {
+            margin-top: 0 !important;
+        }
+
+        .stats-bar {
+            padding: 6px 20px;
+            background: #fafafa;
+            border-top: 1px solid var(--border-color);
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            gap: 20px;
+        }
+
+        /* ==================== 模板公共基础样式 ==================== */
+        [class^="template-"] {
+            padding: 30px 20px;
+            max-width: 677px;
+            margin: 0 auto;
+            word-break: break-word;
+            background-color: transparent;
+        }
+
+        [class^="template-"] p {
+            margin: 16px 0;
+            line-height: 1.75;
+            text-align: justify;
+            font-size: 16px;
+        }
+
+        [class^="template-"] h1 {
+            margin: 40px 0 30px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        [class^="template-"] h2 {
+            margin: 30px 0 20px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        [class^="template-"] h3 {
+            margin: 25px 0 15px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        [class^="template-"] h4 {
+            margin: 20px 0 10px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        [class^="template-"] ul,
+        [class^="template-"] ol {
+            margin: 15px 0;
+            padding-left: 25px;
+        }
+
+        [class^="template-"] ul {
+            list-style-type: disc;
+        }
+
+        [class^="template-"] ol {
+            list-style-type: decimal;
+        }
+
+        [class^="template-"] li {
+            margin: 5px 0;
+            line-height: 1.6;
+        }
+
+        [class^="template-"] ul ul {
+            list-style-type: circle;
+            margin-top: 6px;
+        }
+
+        [class^="template-"] ol ol {
+            list-style-type: lower-alpha;
+        }
+
+        [class^="template-"] blockquote {
+            margin: 20px 0;
+            padding: 16px 20px;
+            border-radius: 4px;
+        }
+
+        [class^="template-"] blockquote p {
+            margin: 0;
+            font-size: 15px;
+        }
+
+        [class^="template-"] a {
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        [class^="template-"] strong {
+            font-weight: bold;
+        }
+
+        [class^="template-"] em {
+            font-style: italic;
+        }
+
+        [class^="template-"] img {
+            display: block;
+            margin: 20px auto;
+            max-width: 100%;
+            border-radius: 4px;
+        }
+
+        [class^="template-"] table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+
+        [class^="template-"] th,
+        [class^="template-"] td {
+            padding: 10px;
+            text-align: left;
+        }
+
+        [class^="template-"] hr {
+            margin: 30px 0;
+            border: none;
+            height: 1px;
+        }
+
+        [class^="template-"] p code,
+        [class^="template-"] li code {
+            padding: 2px 6px;
+            margin: 0 2px;
+            border-radius: 3px;
+            font-size: 14px;
+            font-family: "Courier New", Courier, monospace;
+        }
+
+        [class^="template-"] pre {
+            margin: 16px 0;
+        }
+
+        [class^="template-"] pre code {
+            display: block;
+            padding: 16px;
+            font-size: 13px;
+            line-height: 1.6;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre;
+            font-family: "Courier New", "Consolas", "Monaco", monospace;
+        }
+
+        /* ==================== 模板1: 默认基础 ==================== */
+        .template-default {
+            font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
+            color: #333;
+        }
+
+        .template-default h1 {
+            text-align: center;
+            color: #000;
+        }
+
+        .template-default h2 {
+            color: #333;
+        }
+
+        .template-default h3,
+        .template-default h4 {
+            color: #666;
+        }
+
+        .template-default blockquote {
+            background: #f5f5f5;
+            border-left: 4px solid #ddd;
+        }
+
+        .template-default blockquote p {
+            color: #666;
+        }
+
+        .template-default a {
+            color: #1e6bb8;
+            border-bottom: 1px solid #1e6bb8;
+        }
+
+        .template-default p code,
+        .template-default li code {
+            color: #e83e8c;
+            background: #f8f9fa;
+        }
+
+        .template-default pre code {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+        }
+
+        .template-default table th {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+        }
+
+        .template-default table td {
+            border: 1px solid #ddd;
+        }
+
+        .template-default hr {
+            border-top: 1px solid #ddd;
+        }
+
+        /* ==================== 模板2: 极光玻璃 ==================== */
+        .template-aurora-glass {
+            font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", sans-serif;
+            color: #444;
+        }
+
+        .template-aurora-glass p {
+            line-height: 1.9;
+            letter-spacing: 0.6px;
+        }
+
+        .template-aurora-glass h1 {
+            text-align: center;
+            font-size: 26px;
+            font-weight: 800;
+            background-image: linear-gradient(135deg, #4158D0 0%, #C850C0 46%, #FFCC70 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+            border-image: linear-gradient(135deg, #4158D0 0%, #C850C0 100%) 1;
+        }
+
+        .template-aurora-glass h2 {
+            display: inline-block;
+            color: #fff;
+            font-size: 18px;
+            background-image: linear-gradient(90deg, #4158D0 0%, #C850C0 100%);
+            padding: 8px 18px;
+            border-radius: 20px 20px 20px 4px;
+            box-shadow: 0 8px 16px rgba(200, 80, 192, 0.3);
+        }
+
+        .template-aurora-glass h3 {
+            color: #333;
+            display: inline-block;
+            background: linear-gradient(90deg, rgba(65, 88, 208, 0.2) 0%, rgba(200, 80, 192, 0.2) 100%);
+            background-size: 100% 40%;
+            background-repeat: no-repeat;
+            background-position: 0 90%;
+            padding: 0 4px;
+        }
+
+        .template-aurora-glass h4 {
+            color: #4158D0;
+            background-color: #f0f2ff;
+            padding: 4px 12px;
+            border-radius: 12px;
+            display: inline-block;
+        }
+
+        .template-aurora-glass ul {
+            color: #C850C0;
+        }
+
+        .template-aurora-glass ol {
+            color: #4158D0;
+            font-weight: bold;
+        }
+
+        .template-aurora-glass li section {
+            color: #444;
+            font-weight: normal;
+        }
+
+        .template-aurora-glass blockquote {
+            background-color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: -4px -4px 10px rgba(255, 255, 255, 0.8), 4px 4px 20px rgba(65, 88, 208, 0.1);
+            border-radius: 16px;
+            border-top: 4px solid #C850C0;
+        }
+
+        .template-aurora-glass blockquote p {
+            color: #555;
+            line-height: 1.8;
+        }
+
+        .template-aurora-glass a {
+            color: #C850C0;
+            border-bottom: 1px dashed #C850C0;
+        }
+
+        .template-aurora-glass strong {
+            background-image: linear-gradient(135deg, #4158D0 0%, #C850C0 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .template-aurora-glass em {
+            color: #C850C0;
+        }
+
+        .template-aurora-glass p code,
+        .template-aurora-glass li code {
+            color: #4158D0;
+            background: #f0f2ff;
+            border: 1px solid rgba(65, 88, 208, 0.1);
+        }
+
+        .template-aurora-glass pre code {
+            background: #282c34;
+            color: #abb2bf;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .template-aurora-glass hr {
+            height: 2px;
+            background-image: linear-gradient(90deg, rgba(247, 249, 252, 0) 0%, #C850C0 50%, rgba(247, 249, 252, 0) 100%);
+            width: 80%;
+            margin: 60px auto;
+        }
+
+        .template-aurora-glass img {
+            border-radius: 12px;
+            box-shadow: 0 15px 35px rgba(65, 88, 208, 0.12);
+        }
+
+        .template-aurora-glass table {
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+            border: 1px solid #f0f0f0;
+        }
+
+        .template-aurora-glass th {
+            background: #f4f6f9;
+            color: #4158D0;
+            font-weight: 700;
+            border: 1px solid #f0f0f0;
+        }
+
+        .template-aurora-glass td {
+            border: 1px solid #f0f0f0;
+            background: #fff;
+        }
+
+        /* ==================== 模板3: 学术论文 ==================== */
+        .template-academic {
+            font-family: "Times New Roman", "Songti SC", "SimSun", serif;
+            color: #000;
+        }
+
+        .template-academic p {
+            text-indent: 0;
+            color: #1a1a1a;
+        }
+
+        .template-academic h1 {
+            text-align: center;
+            font-size: 22px;
+        }
+
+        .template-academic h2 {
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
+            font-size: 18px;
+        }
+
+        .template-academic h3 {
+            color: #800000;
+            font-size: 16px;
+        }
+
+        .template-academic h4 {
+            font-style: italic;
+            color: #333;
+        }
+
+        .template-academic blockquote {
+            background: #fafafa;
+            border: 1px solid #ddd;
+            border-left: 4px solid #666;
+        }
+
+        .template-academic blockquote p {
+            color: #555;
+        }
+
+        .template-academic a {
+            color: #000080;
+            text-decoration: underline;
+        }
+
+        .template-academic p code,
+        .template-academic li code {
+            color: #000;
+            background: #f4f4f4;
+            border: 1px solid #eee;
+        }
+
+        .template-academic pre code {
+            background: #f9f9f9;
+            border: 1px solid #ccc;
+            border-radius: 0;
+        }
+
+        .template-academic table {
+            border-top: 2px solid #000;
+            border-bottom: 2px solid #000;
+        }
+
+        .template-academic th {
+            border-bottom: 1px solid #000;
+            text-align: center;
+            background: #fff;
+        }
+
+        .template-academic td {
+            text-align: center;
+            border: none;
+        }
+
+        /* ==================== 模板4: 包豪斯 ==================== */
+        .template-bauhaus {
+            font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
+            color: #111;
+            border-top: 8px solid #D32F2F;
+            border-bottom: 8px solid #1976D2;
+        }
+
+        .template-bauhaus p {
+            line-height: 1.8;
+            color: #333;
+        }
+
+        .template-bauhaus h1 {
+            font-size: 26px;
+            font-weight: 900;
+            color: #fff;
+            background: #D32F2F;
+            padding: 15px 25px;
+            display: inline-block;
+            box-shadow: 6px 6px 0 #111;
+            border: 2px solid #111;
+        }
+
+        .template-bauhaus h2 {
+            font-size: 20px;
+            color: #111;
+            padding-left: 20px;
+            border-left: 10px solid #1976D2;
+        }
+
+        .template-bauhaus h3 {
+            color: #111;
+            border-bottom: 5px solid #FBC02D;
+            display: inline-block;
+            padding-bottom: 2px;
+        }
+
+        .template-bauhaus h4 {
+            color: #1976D2;
+            background: #eee;
+            padding: 4px 8px;
+        }
+
+        .template-bauhaus ul,
+        .template-bauhaus ol {
+            color: #D32F2F;
+        }
+
+        .template-bauhaus ul {
+            list-style: square;
+        }
+
+        .template-bauhaus ol {
+            font-weight: bold;
+        }
+
+        .template-bauhaus li section {
+            color: #333;
+            font-weight: normal;
+        }
+
+        .template-bauhaus blockquote {
+            background: #f9f9f9;
+            border: 2px solid #111;
+            box-shadow: 5px 5px 0 #D32F2F;
+            padding: 20px;
+        }
+
+        .template-bauhaus blockquote p {
+            color: #333;
+        }
+
+        .template-bauhaus a {
+            color: #111;
+            background-color: rgba(25, 118, 210, 0.2);
+            border-bottom: 1px solid #1976D2;
+            padding: 0 2px;
+        }
+
+        .template-bauhaus strong {
+            color: #D32F2F;
+            font-weight: 900;
+        }
+
+        .template-bauhaus em {
+            color: #1976D2;
+            font-weight: bold;
+        }
+
+        .template-bauhaus mark {
+            background: #FBC02D;
+            color: #000;
+            padding: 2px 6px;
+            font-weight: bold;
+        }
+
+        .template-bauhaus p code,
+        .template-bauhaus li code {
+            background: #FBC02D;
+            color: #000;
+            font-weight: bold;
+            font-family: sans-serif;
+        }
+
+        .template-bauhaus pre code {
+            background: #111;
+            color: #f5f5f5;
+            border: 2px solid #111;
+            border-radius: 0;
+        }
+
+        .template-bauhaus hr {
+            height: 4px;
+            background: #000;
+        }
+
+        .template-bauhaus img {
+            border: 3px solid #111;
+            box-shadow: 6px 6px 0 #1976D2;
+        }
+
+        .template-bauhaus table {
+            border: 2px solid #111;
+        }
+
+        .template-bauhaus th {
+            background: #1976D2;
+            color: #fff;
+            border: 1px solid #111;
+        }
+
+        .template-bauhaus td {
+            border: 1px solid #111;
+        }
+
+        /* ==================== 模板5: 赛博朋克 ==================== */
+        .template-cyberpunk {
+            font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
+            color: #444;
+        }
+
+        .template-cyberpunk p {
+            line-height: 1.75;
+        }
+
+        .template-cyberpunk h1 {
+            text-align: center;
+            font-size: 26px;
+            font-weight: 900;
+            color: #12161F;
+            border: 2px solid #00F3FF;
+            padding: 12px 24px;
+            background: rgba(0, 243, 255, 0.1);
+            box-shadow: 4px 4px 0px #FF00C1;
+            display: inline-block;
+        }
+
+        .template-cyberpunk h2 {
+            display: inline-block;
+            font-size: 20px;
+            color: #12161F;
+            background: linear-gradient(90deg, #00F3FF, #00F3FF);
+            padding: 6px 16px;
+            clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+        }
+
+        .template-cyberpunk h3 {
+            color: #FF00C1;
+            padding-left: 10px;
+            border-left: 4px solid #FF00C1;
+        }
+
+        .template-cyberpunk h4 {
+            color: #00F3FF;
+        }
+
+        .template-cyberpunk h4:before {
+            content: "> ";
+            color: #FF00C1;
+        }
+
+        .template-cyberpunk ul {
+            color: #00F3FF;
+        }
+
+        .template-cyberpunk ol {
+            color: #FF00C1;
+            font-weight: bold;
+        }
+
+        .template-cyberpunk ul ul {
+            list-style-type: square;
+            color: #FFB84D;
+        }
+
+        .template-cyberpunk ol ol {
+            color: #00F3FF;
+        }
+
+        .template-cyberpunk li section {
+            color: #444;
+            font-weight: normal;
+        }
+
+        .template-cyberpunk blockquote {
+            background-color: rgba(0, 243, 255, 0.05);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-left: 4px solid #00F3FF;
+            padding: 20px;
+        }
+
+        .template-cyberpunk blockquote p {
+            color: #444;
+            font-family: monospace;
+        }
+
+        .template-cyberpunk a {
+            color: #00F3FF;
+            border-bottom: 1px dashed #00F3FF;
+        }
+
+        .template-cyberpunk strong {
+            color: #FF00C1;
+            text-shadow: 0 0 2px rgba(255, 0, 193, 0.4);
+        }
+
+        .template-cyberpunk em {
+            color: #FF00C1;
+            text-shadow: 0 0 3px rgba(255, 0, 193, 0.5);
+        }
+
+        .template-cyberpunk p code,
+        .template-cyberpunk li code {
+            color: #00F3FF;
+            background: #000000;
+            border: 1px solid rgba(0, 243, 255, 0.3);
+        }
+
+        .template-cyberpunk pre code {
+            background: #161B22;
+            border: 1px solid #00F3FF;
+            border-left: 3px solid #00F3FF;
+            color: #E6EDF3;
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2), inset 0 0 20px rgba(0, 243, 255, 0.05);
+        }
+
+        .template-cyberpunk hr {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00F3FF, transparent);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+            margin: 50px 0;
+        }
+
+        .template-cyberpunk table {
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-spacing: 0;
+        }
+
+        .template-cyberpunk th {
+            background: rgba(0, 243, 255, 0.1);
+            color: #00F3FF;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.3);
+        }
+
+        .template-cyberpunk td {
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        /* ==================== 模板6: 知识库 ==================== */
+        .template-knowledge-base {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", "PingFang SC", sans-serif;
+            color: #37352F;
+        }
+
+        .template-knowledge-base p {
+            letter-spacing: 0.2px;
+        }
+
+        .template-knowledge-base h1 {
+            border-bottom: 1px solid #E3E2E0;
+            padding-bottom: 20px;
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .template-knowledge-base h2 {
+            font-size: 22px;
+            font-weight: 600;
+            padding: 8px 12px;
+            background-color: #F7F6F3;
+            border-radius: 4px;
+            display: block;
+        }
+
+        .template-knowledge-base h3 {
+            font-size: 18px;
+            font-weight: 600;
+            border-bottom: 3px solid #FDECC8;
+            padding-bottom: 2px;
+            display: inline-block;
+        }
+
+        .template-knowledge-base h4 {
+            color: #EB5757;
+            font-size: 16px;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .template-knowledge-base ul,
+        .template-knowledge-base ol {
+            padding-left: 24px;
+        }
+
+        .template-knowledge-base ol {
+            font-weight: 600;
+        }
+
+        .template-knowledge-base li section {
+            font-weight: normal;
+        }
+
+        .template-knowledge-base blockquote {
+            background-color: #F1F1EF;
+            border: none;
+            border-radius: 4px;
+            border-left: 4px solid #37352F;
+        }
+
+        .template-knowledge-base blockquote blockquote {
+            background-color: #E7F3F8;
+            border-left-color: #2D9CDB;
+        }
+
+        .template-knowledge-base blockquote blockquote blockquote {
+            background-color: #FDF5F2;
+            border-left-color: #F2994A;
+        }
+
+        .template-knowledge-base a {
+            color: #37352F;
+            border-bottom: 1px solid #999;
+            font-weight: 500;
+        }
+
+        .template-knowledge-base strong {
+            background-color: #FDECC8;
+            padding: 2px 4px;
+            margin: 0 2px;
+            border-radius: 3px;
+        }
+
+        .template-knowledge-base em {
+            opacity: 0.7;
+        }
+
+        .template-knowledge-base p code,
+        .template-knowledge-base li code {
+            color: #EB5757;
+            background: rgba(135, 131, 120, 0.15);
+            border: none;
+            font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+        }
+
+        .template-knowledge-base pre code {
+            background: #F7F6F3;
+            border: none;
+            font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+        }
+
+        .template-knowledge-base hr {
+            background-color: #E3E2E0;
+        }
+
+        .template-knowledge-base img {
+            box-shadow: none;
+            border: 1px solid #E3E2E0;
+        }
+
+        .template-knowledge-base table {
+            border: 1px solid #E3E2E0;
+        }
+
+        .template-knowledge-base th {
+            background: #F7F6F3;
+            font-weight: 600;
+            border: 1px solid #E3E2E0;
+        }
+
+        .template-knowledge-base td {
+            border: 1px solid #E3E2E0;
+            background: #fff;
+        }
+
+        /* ==================== 模板7: 奢华金 ==================== */
+        .template-luxury-gold {
+            font-family: "Songti SC", "SimSun", "STSong", "Georgia", serif;
+            color: #222;
+            padding: 40px 22px;
+        }
+
+        .template-luxury-gold p {
+            margin: 30px 0;
+            line-height: 2.0;
+            color: #444;
+        }
+
+        .template-luxury-gold h1 {
+            text-align: center;
+            font-size: 26px;
+            font-weight: normal;
+            letter-spacing: 3px;
+            border-bottom: 1px solid #000;
+            padding-bottom: 20px;
+            margin: 70px 0 50px;
+        }
+
+        .template-luxury-gold h2 {
+            text-align: center;
+            font-size: 19px;
+            font-weight: normal;
+            color: #9E8045;
+            border-top: 1px solid #9E8045;
+            border-bottom: 1px solid #9E8045;
+            padding: 10px 24px;
+            display: inline-block;
+        }
+
+        .template-luxury-gold h3 {
+            text-align: center;
+            font-size: 17px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .template-luxury-gold h4 {
+            text-align: center;
+            color: #9E8045;
+            font-weight: normal;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 4px;
+        }
+
+        .template-luxury-gold ul,
+        .template-luxury-gold ol {
+            color: #9E8045;
+        }
+
+        .template-luxury-gold ul {
+            list-style: square;
+        }
+
+        .template-luxury-gold li section {
+            color: #444;
+        }
+
+        .template-luxury-gold blockquote {
+            background: #fff;
+            border: none;
+            text-align: center;
+        }
+
+        .template-luxury-gold blockquote p {
+            color: #666;
+            font-style: italic;
+            font-family: serif;
+        }
+
+        .template-luxury-gold blockquote blockquote {
+            border-left: 2px solid #9E8045;
+        }
+
+        .template-luxury-gold a {
+            color: #000;
+            border-bottom: 1px solid #9E8045;
+        }
+
+        .template-luxury-gold strong {
+            color: #9E8045;
+        }
+
+        .template-luxury-gold em {
+            color: #9E8045;
+        }
+
+        .template-luxury-gold p code,
+        .template-luxury-gold li code {
+            color: #9E8045;
+            background: rgba(158, 128, 69, 0.06);
+            border: 1px solid rgba(158, 128, 69, 0.2);
+            font-family: serif;
+        }
+
+        .template-luxury-gold pre code {
+            background: #fcfcfc;
+            border: 1px solid #eee;
+            font-family: serif;
+        }
+
+        .template-luxury-gold hr {
+            height: 1px;
+            background: #9E8045;
+            width: 40px;
+            margin: 60px auto;
+        }
+
+        .template-luxury-gold img {
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.06);
+            margin: 50px auto;
+        }
+
+        .template-luxury-gold table {
+            border-top: 1px solid #000;
+            border-bottom: 1px solid #000;
+            margin: 40px 0;
+        }
+
+        .template-luxury-gold th {
+            color: #9E8045;
+            font-weight: normal;
+            border-bottom: 1px solid #eee;
+            text-align: center;
+        }
+
+        .template-luxury-gold td {
+            border-bottom: 1px solid #eee;
+            text-align: center;
+        }
+
+        /* ==================== 模板8: 莫兰迪森林 ==================== */
+        .template-morandi-forest {
+            font-family: "Optima", "Georgia", "PingFang SC", "Microsoft YaHei", serif;
+            color: #2F3E32;
+        }
+
+        .template-morandi-forest p {
+            margin: 26px 0;
+            line-height: 2.0;
+            letter-spacing: 0.5px;
+            color: #3A4D39;
+        }
+
+        .template-morandi-forest h1 {
+            text-align: center;
+            font-size: 24px;
+            font-weight: normal;
+            color: #1A261D;
+            padding: 12px 24px;
+            border: 1px solid #739072;
+            background-color: #F1F4F0;
+            letter-spacing: 2px;
+            display: inline-block;
+        }
+
+        .template-morandi-forest h2 {
+            font-size: 19px;
+            font-weight: 700;
+            color: #4F6F52;
+            padding-left: 12px;
+            border-left: 5px solid #4F6F52;
+            border-bottom: 1px solid #E8EBE9;
+            padding-bottom: 10px;
+            display: inline-block;
+        }
+
+        .template-morandi-forest h3 {
+            text-align: center;
+            font-size: 17px;
+            color: #739072;
+            border-bottom: 2px dotted #739072;
+            padding-bottom: 4px;
+            display: inline-block;
+        }
+
+        .template-morandi-forest h4 {
+            color: #fff;
+            background-color: #86A789;
+            padding: 4px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            font-size: 15px;
+        }
+
+        .template-morandi-forest ul {
+            color: #86A789;
+        }
+
+        .template-morandi-forest ol {
+            color: #4F6F52;
+            font-weight: bold;
+        }
+
+        .template-morandi-forest li section {
+            color: #3A4D39;
+            font-weight: normal;
+        }
+
+        .template-morandi-forest blockquote {
+            background-color: #F6F8F6;
+            border: 1px dashed #739072;
+            border-radius: 8px;
+        }
+
+        .template-morandi-forest blockquote p {
+            color: #556B58;
+            font-family: "KaiTi", "STKaiti", serif;
+        }
+
+        .template-morandi-forest a {
+            color: #4F6F52;
+            border-bottom: 1px solid #4F6F52;
+        }
+
+        .template-morandi-forest strong {
+            color: #1A261D;
+            background: linear-gradient(to top, rgba(134, 167, 137, 0.4) 50%, transparent 50%);
+            padding: 0 2px;
+        }
+
+        .template-morandi-forest em {
+            color: #739072;
+        }
+
+        .template-morandi-forest p code,
+        .template-morandi-forest li code {
+            color: #4F6F52;
+            background: #EDF1EE;
+            border: none;
+            font-family: sans-serif;
+        }
+
+        .template-morandi-forest pre code {
+            background: #F0F2F0;
+            border: 1px solid #DCE3DD;
+            border-radius: 6px;
+            font-family: sans-serif;
+        }
+
+        .template-morandi-forest hr {
+            background-color: #D2D4D4;
+            width: 60%;
+            margin: 60px auto;
+        }
+
+        .template-morandi-forest img {
+            border-radius: 2px;
+            box-shadow: 0 8px 20px rgba(79, 111, 82, 0.15);
+            padding: 6px;
+            background: #fff;
+            border: 1px solid #eee;
+        }
+
+        .template-morandi-forest table {
+            border: 1px solid #D2D4D4;
+        }
+
+        .template-morandi-forest th {
+            background: #EDF1EE;
+            color: #4F6F52;
+            font-weight: 700;
+            border: 1px solid #D2D4D4;
+        }
+
+        .template-morandi-forest td {
+            border: 1px solid #D2D4D4;
+            background: #fff;
+        }
+
+        /* ==================== 模板9: 新粗野主义 ==================== */
+        .template-neo-brutalism {
+            font-family: -apple-system, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+            color: #000;
+        }
+
+        .template-neo-brutalism p {
+            line-height: 1.8;
+            letter-spacing: 0.5px;
+            color: #111;
+            font-weight: 400;
+        }
+
+        .template-neo-brutalism h1 {
+            text-align: center;
+            font-size: 24px;
+            font-weight: 900;
+            background-color: #CCFF00;
+            border: 3px solid #000;
+            padding: 12px 20px;
+            box-shadow: 6px 6px 0px #000;
+            display: inline-block;
+        }
+
+        .template-neo-brutalism h2 {
+            font-size: 20px;
+            font-weight: 800;
+            color: #fff;
+            background-color: #6A00FF;
+            padding: 8px 16px;
+            border: 2px solid #000;
+            box-shadow: 4px -4px 0px #000;
+            border-bottom: 3px solid #000;
+            display: inline-block;
+        }
+
+        .template-neo-brutalism h3 {
+            font-size: 18px;
+            font-weight: 800;
+            padding-left: 12px;
+            border-left: 8px solid #CCFF00;
+            display: inline-block;
+        }
+
+        .template-neo-brutalism h4 {
+            color: #fff;
+            background-color: #000;
+            padding: 6px 12px;
+            display: inline-block;
+        }
+
+        .template-neo-brutalism ul {
+            list-style-type: square;
+            color: #6A00FF;
+        }
+
+        .template-neo-brutalism ol {
+            font-weight: 900;
+        }
+
+        .template-neo-brutalism li section {
+            color: #000;
+            font-weight: 500;
+        }
+
+        .template-neo-brutalism ol li {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+        }
+
+        .template-neo-brutalism ol li section {
+            color: #222;
+            font-weight: normal;
+            padding-left: 5px;
+        }
+
+        .template-neo-brutalism blockquote {
+            background-color: #f4f4f4;
+            border: 2px solid #000;
+            box-shadow: 6px 6px 0px #6A00FF;
+            padding: 24px;
+        }
+
+        .template-neo-brutalism blockquote p {
+            color: #000;
+            font-weight: 500;
+        }
+
+        .template-neo-brutalism a {
+            color: #000;
+            border-bottom: 2px solid #000;
+            background: linear-gradient(180deg, transparent 60%, #CCFF00 0);
+            font-weight: 700;
+            padding: 0 2px;
+        }
+
+        .template-neo-brutalism strong {
+            color: #fff;
+            background-color: #6A00FF;
+            padding: 2px 6px;
+            margin: 0 2px;
+            border: 1px solid #000;
+        }
+
+        .template-neo-brutalism em {
+            color: #6A00FF;
+            font-weight: bold;
+        }
+
+        .template-neo-brutalism mark {
+            background: #CCFF00;
+            border: 2px solid #000;
+            font-weight: bold;
+        }
+
+        .template-neo-brutalism p code,
+        .template-neo-brutalism li code {
+            color: #000;
+            background: #fff;
+            border: 1px solid #000;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 #ccc;
+            font-family: "Menlo", monospace;
+        }
+
+        .template-neo-brutalism pre code {
+            background: #000;
+            color: #CCFF00;
+            border: 2px solid #000;
+            box-shadow: 6px 6px 0px #ddd;
+            border-radius: 0;
+            font-family: "Menlo", "Courier New", monospace;
+        }
+
+        .template-neo-brutalism hr {
+            height: 4px;
+            background: #000;
+            margin: 60px auto;
+        }
+
+        .template-neo-brutalism img {
+            border: 2px solid #000;
+            box-shadow: 8px 8px 0px #000;
+            padding: 0;
+            background: #fff;
+        }
+
+        .template-neo-brutalism table {
+            border: 2px solid #000;
+            box-shadow: 6px 6px 0px #000;
+        }
+
+        .template-neo-brutalism th {
+            background: #6A00FF;
+            color: #fff;
+            font-weight: 900;
+            border: 1px solid #000;
+            text-transform: uppercase;
+        }
+
+        .template-neo-brutalism td {
+            border: 1px solid #000;
+            background: #fff;
+        }
+
+        .template-neo-brutalism tr:nth-child(even) td {
+            background-color: #faffd1;
+        }
+
+        /* ==================== 模板10: 购物小票 ==================== */
+        .template-receipt {
+            font-family: "Courier New", "SimSun", "Songti SC", monospace;
+            color: #111;
+            border-top: 5px dashed #111;
+            border-bottom: 5px dashed #111;
+            padding: 40px 20px;
+        }
+
+        .template-receipt p {
+            line-height: 1.6;
+            color: #222;
+            font-size: 15px;
+        }
+
+        .template-receipt h1 {
+            text-align: center;
+            font-size: 26px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            border-top: 2px dashed #000;
+            border-bottom: 2px dashed #000;
+            padding: 15px 0;
+            display: block;
+        }
+
+        .template-receipt h2 {
+            text-align: center;
+            display: block;
+            font-size: 18px;
+            color: #fff;
+            background: #000;
+            padding: 8px;
+        }
+
+        .template-receipt h3 {
+            font-size: 16px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 2px;
+            display: inline-block;
+        }
+
+        .template-receipt h4 {
+            text-decoration: underline;
+        }
+
+        .template-receipt ul {
+            list-style: none;
+            padding-left: 10px;
+        }
+
+        .template-receipt ul li {
+            border-bottom: 1px dotted #ccc;
+            padding-bottom: 4px;
+        }
+
+        .template-receipt ul li::before {
+            content: "[*] ";
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .template-receipt ul ul li::before {
+            content: "[-] ";
+        }
+
+        .template-receipt ol {
+            font-weight: bold;
+        }
+
+        .template-receipt li section {
+            font-weight: normal;
+            color: #222;
+        }
+
+        .template-receipt blockquote {
+            border: 1px dotted #000;
+            font-size: 14px;
+            background: #f8f8f8;
+        }
+
+        .template-receipt blockquote p {
+            font-family: monospace;
+            color: #444;
+        }
+
+        .template-receipt a {
+            text-decoration: underline;
+        }
+
+        .template-receipt strong {
+            font-weight: 900;
+            background: #ddd;
+            padding: 0 4px;
+        }
+
+        .template-receipt p code,
+        .template-receipt li code {
+            background: #000;
+            color: #fff;
+            font-family: monospace;
+            border-radius: 0;
+        }
+
+        .template-receipt pre code {
+            background: #f4f4f4 !important;
+            border: 2px dashed #000 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            font-family: "Courier New", monospace;
+        }
+
+        .template-receipt hr {
+            border-top: 2px dashed #000;
+        }
+
+        .template-receipt img {
+            border: 2px dashed #000;
+            padding: 8px;
+            background: #fff;
+        }
+
+        .template-receipt table {
+            font-family: monospace;
+        }
+
+        .template-receipt th {
+            border-bottom: 2px dashed #000;
+            text-align: right;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .template-receipt th:first-child {
+            text-align: left;
+        }
+
+        .template-receipt td {
+            border-bottom: 1px dotted #000;
+            text-align: right;
+        }
+
+        .template-receipt td:first-child {
+            text-align: left;
+        }
+
+        /* ==================== 模板11: 落日胶片 ==================== */
+        .template-sunset-film {
+            font-family: "Songti SC", "SimSun", "STSong", "Georgia", serif;
+            color: #4A3B32;
+        }
+
+        .template-sunset-film p {
+            margin: 26px 0;
+            line-height: 1.9;
+            letter-spacing: 0.8px;
+            color: #5D4037;
+        }
+
+        .template-sunset-film h1 {
+            text-align: center;
+            font-size: 26px;
+            font-weight: 900;
+            color: #B33D25;
+            border-top: 4px double #B33D25;
+            border-bottom: 1px solid #B33D25;
+            padding: 20px 0;
+            letter-spacing: 3px;
+            display: inline-block;
+        }
+
+        .template-sunset-film h2 {
+            font-size: 19px;
+            color: #FFFBF0;
+            background-color: #B33D25;
+            padding: 8px 16px;
+            border-radius: 2px;
+            box-shadow: 4px 4px 0px rgba(179, 61, 37, 0.2);
+            display: inline-block;
+        }
+
+        .template-sunset-film h3 {
+            color: #8D5B4C;
+            padding-left: 10px;
+            border-left: 4px solid #D98C45;
+        }
+
+        .template-sunset-film h4 {
+            color: #B33D25;
+            border-bottom: 2px solid #F2C94C;
+            padding-bottom: 2px;
+            display: inline-block;
+        }
+
+        .template-sunset-film ul {
+            list-style-type: square;
+            color: #D98C45;
+        }
+
+        .template-sunset-film ol {
+            color: #B33D25;
+            font-weight: bold;
+            font-family: serif;
+        }
+
+        .template-sunset-film li section {
+            color: #5D4037;
+            font-weight: normal;
+        }
+
+        .template-sunset-film blockquote {
+            background-color: #F7EED6;
+            border-left: 3px solid #8D5B4C;
+            border-radius: 2px;
+        }
+
+        .template-sunset-film blockquote p {
+            color: #6D4C41;
+            font-style: italic;
+        }
+
+        .template-sunset-film blockquote blockquote {
+            background: #FFF8E7;
+            border-left: 3px solid #D98C45;
+        }
+
+        .template-sunset-film a {
+            color: #B33D25;
+            border-bottom: 1px solid #B33D25;
+        }
+
+        .template-sunset-film strong {
+            color: #B33D25;
+            font-weight: 900;
+        }
+
+        .template-sunset-film em {
+            color: #D98C45;
+            font-weight: bold;
+        }
+
+        .template-sunset-film p code,
+        .template-sunset-film li code {
+            color: #5D4037;
+            background: #EFE6D5;
+            border: none;
+            font-family: serif;
+        }
+
+        .template-sunset-film pre code {
+            background: #4A3B32;
+            color: #E6CBB5;
+            border: 4px solid #F7EED6;
+            font-family: "Courier New", Courier, monospace;
+        }
+
+        .template-sunset-film hr {
+            border-top: 2px dashed #D98C45;
+            margin: 60px auto;
+        }
+
+        .template-sunset-film img {
+            width: 95%;
+            border: 8px solid #fff;
+            box-shadow: 0 10px 25px rgba(93, 64, 55, 0.15);
+            background: #fff;
+        }
+
+        .template-sunset-film table {
+            border: 2px solid #8D5B4C;
+        }
+
+        .template-sunset-film th {
+            background: #EFE6D5;
+            color: #4A3B32;
+            border: 1px solid #8D5B4C;
+            text-align: center;
+        }
+
+        .template-sunset-film td {
+            border: 1px solid #8D5B4C;
+            color: #5D4037;
+            background: #FFFBF0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- 左侧编辑器 -->
+        <div class="editor-panel">
+            <div class="panel-header">
+                <div class="panel-header-left">
+                    <div class="panel-title">Markdown 编辑</div>
+                    <button id="import-btn" class="btn btn-secondary">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        <span>导入 Markdown 文件</span>
+                    </button>
+                    <input type="file" id="file-input" accept=".md,.markdown,.txt" />
+                </div>
+            </div>
+            <textarea id="markdown-input" placeholder="在这里输入 Markdown 内容..."></textarea>
+            <div class="stats-bar">
+                <span id="char-count">字符: 0</span>
+                <span id="word-count">字数: 0</span>
+            </div>
+        </div>
+
+        <!-- 右侧预览 -->
+        <div class="preview-panel">
+            <div class="panel-header">
+                <div class="panel-title">预览效果</div>
+                <div class="template-controls">
+                    <span class="template-label">选择模板：</span>
+                    <select id="template-selector" class="template-selector">
+                        <option value="template-default">默认基础</option>
+                        <option value="template-aurora-glass">极光玻璃</option>
+                        <option value="template-academic">学术论文</option>
+                        <option value="template-bauhaus">包豪斯</option>
+                        <option value="template-cyberpunk">赛博朋克</option>
+                        <option value="template-knowledge-base">知识库</option>
+                        <option value="template-luxury-gold">奢华金</option>
+                        <option value="template-morandi-forest">莫兰迪森林</option>
+                        <option value="template-neo-brutalism">新粗野主义</option>
+                        <option value="template-receipt">购物小票</option>
+                        <option value="template-sunset-film">落日胶片</option>
+                    </select>
+                    <button id="copy-btn" class="btn btn-primary">复制 HTML</button>
+                </div>
+            </div>
+            <div class="preview-content">
+                <div id="preview" class="template-default"></div>
+            </div>
+            <div class="stats-bar">
+                <span>💡 Tip: 复制后可直接粘贴到微信公众号编辑器</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- CDN资源 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+    <script>
+        // DOM元素
+        const markdownInput = document.getElementById('markdown-input');
+        const preview = document.getElementById('preview');
+        const templateSelector = document.getElementById('template-selector');
+        const copyBtn = document.getElementById('copy-btn');
+        const charCount = document.getElementById('char-count');
+        const wordCount = document.getElementById('word-count');
+        const importBtn = document.getElementById('import-btn');
+        const fileInput = document.getElementById('file-input');
+
+        // 本地存储键
+        const STORAGE_KEY = 'wechat-md-editor-content';
+        const TEMPLATE_KEY = 'wechat-md-editor-template';
+
+        // 配置 marked
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            highlight: function (code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+                return hljs.highlightAuto(code).value;
+            }
+        });
+
+        // 防抖函数
+        function debounce(fn, delay) {
+            let timer;
+            return function (...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn.apply(this, args), delay);
+            };
+        }
+
+        // 更新统计
+        function updateStats() {
+            const text = markdownInput.value;
+            charCount.textContent = `字符: ${text.length}`;
+            const words = text.replace(/[\s\n]+/g, '').length;
+            wordCount.textContent = `字数: ${words}`;
+        }
+
+        // 保存到本地存储
+        function saveToStorage() {
+            localStorage.setItem(STORAGE_KEY, markdownInput.value);
+            localStorage.setItem(TEMPLATE_KEY, templateSelector.value);
+        }
+
+        const DEFAULT_CONTENT = `# 欢迎使用微信公众号 Markdown 编辑器
+
+这里是**摘要部分**，支持 *斜体* 和 **加粗**。编辑器支持实时预览，不仅支持标准 Markdown 语法，还专门为微信公众号进行了排版优化。
+
+## 1. 主要功能特性
+
+> 💡 提示：点击右上角「选择模板」可快速切换排版风格。
+
+- **多套精美模板**：内置极光玻璃、赛博朋克、学术论文等多种风格
+- **一键复制代码**：支持一键复制 HTML 到公众号后台
+- **代码高亮**：基于 highlight.js 的代码语法高亮
+- **实时预览**：左侧编辑，右侧实时显示效果
+
+## 2. 代码高亮演示
+
+支持多种编程语言的高亮显示：
+
+\`\`\`javascript
+function sayHello(name) {
+    console.log(\`Hello, \${name}!\`);
+}
+sayHello('WeChat');
+\`\`\`
+
+## 3. 表格样式展示
+
+| 功能 | 状态 | 说明 |
+| :--- | :---: | :--- |
+| 基础格式 | ✅ | 标题、段落、列表 |
+| 代码高亮 | ✅ | 支持主流语言 |
+| 样式复制 | ✅ | 完美兼容公众号 |
+
+---
+
+Made with ❤️ by WeMD Team`;
+
+        // 从本地存储恢复
+        // 从本地存储恢复
+        function loadFromStorage() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            const savedTemplate = localStorage.getItem(TEMPLATE_KEY);
+
+            if (saved) {
+                markdownInput.value = saved;
+                if (savedTemplate) {
+                    templateSelector.value = savedTemplate;
+                    preview.className = savedTemplate;
+                }
+            } else {
+                markdownInput.value = DEFAULT_CONTENT;
+                templateSelector.value = 'template-default';
+                preview.className = 'template-default';
+            }
+        }
+
+        // 更新预览
+        function updatePreview() {
+            const markdown = markdownInput.value;
+            const html = marked.parse(markdown);
+            preview.innerHTML = html;
+            updateStats();
+            saveToStorage();
+        }
+
+        // 切换模板
+        function changeTemplate() {
+            preview.className = templateSelector.value;
+            saveToStorage();
+        }
+
+        // CSS转内联样式
+        function cssToInlineStyles(element) {
+            const container = document.createElement('div');
+            container.innerHTML = element.innerHTML;
+            container.className = element.className;
+            container.style.position = 'absolute';
+            container.style.left = '-9999px';
+            document.body.appendChild(container);
+
+            const importantProps = [
+                'color', 'background', 'background-color', 'background-image',
+                'font-size', 'font-weight', 'font-family', 'font-style',
+                'line-height', 'letter-spacing', 'text-align', 'text-decoration', 'text-indent', 'text-shadow',
+                'margin', 'margin-top', 'margin-bottom', 'margin-left', 'margin-right',
+                'padding', 'padding-top', 'padding-bottom', 'padding-left', 'padding-right',
+                'border', 'border-top', 'border-bottom', 'border-left', 'border-right',
+                'border-radius', 'border-collapse',
+                'display', 'width', 'max-width', 'box-shadow', 'list-style-type',
+                'overflow-x', 'white-space', 'clip-path'
+            ];
+
+            function applyStylesToElement(sourceEl, targetEl) {
+                const computedStyle = window.getComputedStyle(sourceEl);
+                const styles = [];
+                importantProps.forEach(prop => {
+                    const value = computedStyle.getPropertyValue(prop);
+                    if (value && value !== 'none' && value !== 'normal' && value !== 'auto') {
+                        styles.push(`${prop}: ${value}`);
+                    }
+                });
+                if (styles.length > 0) {
+                    targetEl.setAttribute('style', styles.join('; '));
+                }
+                const sourceChildren = sourceEl.children;
+                const targetChildren = targetEl.children;
+                for (let i = 0; i < sourceChildren.length; i++) {
+                    if (targetChildren[i]) {
+                        applyStylesToElement(sourceChildren[i], targetChildren[i]);
+                    }
+                }
+            }
+
+            applyStylesToElement(container, container);
+            const result = container.innerHTML;
+            document.body.removeChild(container);
+            return result;
+        }
+
+        // 复制HTML
+        async function copyHTML() {
+            const inlineHTML = cssToInlineStyles(preview);
+            try {
+                const blob = new Blob([inlineHTML], { type: 'text/html' });
+                const clipboardItem = new ClipboardItem({ 'text/html': blob });
+                await navigator.clipboard.write([clipboardItem]);
+                copyBtn.textContent = '✓ 已复制';
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                    copyBtn.textContent = '复制 HTML';
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                copyHTMLFallback(inlineHTML);
+            }
+        }
+
+        // 降级复制方法
+        function copyHTMLFallback(html) {
+            try {
+                const tempDiv = document.createElement('div');
+                tempDiv.contentEditable = 'true';
+                tempDiv.innerHTML = html;
+                tempDiv.style.cssText = 'position:fixed;left:-9999px';
+                document.body.appendChild(tempDiv);
+                const range = document.createRange();
+                range.selectNodeContents(tempDiv);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+                const success = document.execCommand('copy');
+                selection.removeAllRanges();
+                document.body.removeChild(tempDiv);
+                if (success) {
+                    copyBtn.textContent = '✓ 已复制';
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => {
+                        copyBtn.textContent = '复制 HTML';
+                        copyBtn.classList.remove('copied');
+                    }, 2000);
+                } else {
+                    alert('复制失败，请手动复制');
+                }
+            } catch (err) {
+                alert('复制失败，请手动复制');
+            }
+        }
+
+        // 导入文件
+        importBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                markdownInput.value = event.target.result;
+                updatePreview();
+            };
+            reader.readAsText(file, 'UTF-8');
+            fileInput.value = '';
+        });
+
+        // 同步滚动
+        const previewContent = document.querySelector('.preview-content');
+        let isEditorScrolling = false;
+        let isPreviewScrolling = false;
+
+        markdownInput.addEventListener('scroll', debounce(() => {
+            if (isPreviewScrolling) return;
+            isEditorScrolling = true;
+            const ratio = markdownInput.scrollTop / (markdownInput.scrollHeight - markdownInput.clientHeight);
+            previewContent.scrollTop = ratio * (previewContent.scrollHeight - previewContent.clientHeight);
+            setTimeout(() => isEditorScrolling = false, 100);
+        }, 16));
+
+        previewContent.addEventListener('scroll', debounce(() => {
+            if (isEditorScrolling) return;
+            isPreviewScrolling = true;
+            const ratio = previewContent.scrollTop / (previewContent.scrollHeight - previewContent.clientHeight);
+            markdownInput.scrollTop = ratio * (markdownInput.scrollHeight - markdownInput.clientHeight);
+            setTimeout(() => isPreviewScrolling = false, 100);
+        }, 16));
+
+        // 快捷键
+        markdownInput.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'b') { e.preventDefault(); wrapSelection('**', '**'); }
+                if (e.key === 'i') { e.preventDefault(); wrapSelection('*', '*'); }
+                if (e.key === 'k') { e.preventDefault(); wrapSelection('[', '](url)'); }
+            }
+        });
+
+        function wrapSelection(before, after) {
+            const start = markdownInput.selectionStart;
+            const end = markdownInput.selectionEnd;
+            const text = markdownInput.value;
+            const selected = text.substring(start, end);
+            markdownInput.value = text.substring(0, start) + before + selected + after + text.substring(end);
+            markdownInput.selectionStart = start + before.length;
+            markdownInput.selectionEnd = end + before.length;
+            markdownInput.focus();
+            updatePreview();
+        }
+
+        // 事件绑定
+        markdownInput.addEventListener('input', debounce(updatePreview, 150));
+        templateSelector.addEventListener('change', changeTemplate);
+        copyBtn.addEventListener('click', copyHTML);
+
+        // 初始化
+        loadFromStorage();
+        updatePreview();
+    </script>
+</body>
+
+</html>

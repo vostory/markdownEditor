@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown 转微信公众号样式</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f5f5f5;
+        }
+
+        .header {
+            background: #fff;
+            padding: 12px 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            color: #2e7d32;
+            margin: 0;
+            flex: 1;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .style-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .style-selector label {
+            font-size: 13px;
+            color: #666;
+            font-weight: 600;
+        }
+
+        .style-selector select {
+            padding: 4px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .style-selector select:hover {
+            border-color: #999;
+        }
+
+        .style-info {
+            font-size: 11px;
+            color: #999;
+            white-space: nowrap;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 100px);
+            padding: 20px;
+            gap: 20px;
+        }
+
+        .panel {
+            flex: 1;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .copy-btn {
+            padding: 8px 20px;
+            background: #d32f2f;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: #b71c1c;
+        }
+
+        .copy-btn:active {
+            background: #c62828;
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow: hidden;
+            padding: 20px;
+        }
+
+        #markdown-input {
+            width: 100%;
+            height: 100%;
+            border: none;
+            outline: none;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: none;
+        }
+
+        #preview {
+            background: #fff;
+            overflow: auto;
+            height: 100%;
+        }
+
+        .toast {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 15px 30px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .toast.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Markdown转微信公众号排版</h1>
+        <div class="header-right">
+            <div class="style-selector">
+                <label for="theme-select">选择样式：</label>
+                <select id="theme-select" onchange="changeTheme()">
+                    <option value="red">红色主题</option>
+                    <option value="simple">简洁主题</option>
+                    <option value="classic-elegant">经典优雅主题</option>
+                </select>
+            </div>
+            <div class="style-info" id="style-info">正文 17px · 行高 1.9 · 段距 20px | H2 24px · H3 20px</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">Markdown 输入</div>
+            </div>
+            <div class="panel-content">
+                <textarea id="markdown-input" placeholder="在这里输入 Markdown 内容..."></textarea>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">预览</div>
+                <button class="copy-btn" onclick="copyToClipboard()">复制内容</button>
+            </div>
+            <div class="panel-content">
+                <div id="preview"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        // 当前选择的主题
+        let currentTheme = 'red';
+
+        // 默认示例内容
+        const defaultMarkdown = `大家好，欢迎阅读今天的文章。这是一段开头的引言文字，用来引导读者进入主题。
+
+微信公众号文章通常会在开头用几段文字介绍背景或引起读者兴趣，而不是直接就是标题。这样的排版更符合阅读习惯。
+
+## 这是一个二级标题
+
+这是一段普通文字。微信公众号的文字通常行高较大，阅读体验更好。这里展示了基本的段落样式。
+
+### 这是一个三级标题
+
+你可以在这里添加更多内容：
+
+- **无序列表加粗开头**：这是第一项的详细内容说明
+- **另一个加粗标题**：这是第二项的详细内容
+- 普通列表项目三
+- **测试粗体**：确保在微信编辑器中不会错乱
+
+这是一段包含**强调文本**的段落。强调的文字会有特殊的样式。你也可以使用*斜体文本*来表达不同的语气。
+
+## 图片示例
+
+下面是一张示例图片，展示了图片的样式效果：
+
+![示例图片](https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&h=500&fit=crop)
+
+图片会自动居中，带有圆角边框和淡淡的阴影效果。
+
+### 代码示例
+
+如果你需要展示代码，可以使用行内代码 \`console.log('Hello')\` 或者代码块：
+
+\`\`\`javascript
+function greet(name) {
+  console.log(\`Hello, \${name}!\`);
+  return true;
+}
+
+greet('World');
+\`\`\`
+
+代码会有专门的样式，方便阅读。
+
+## 引用文本
+
+有时候你需要引用别人的话：
+
+> 这是一段引用文本。引用会有特殊的样式，左侧有边框，背景是浅色，非常适合用来突出重要的观点或者引用权威的说法。
+
+引用结束后，继续你的正文内容。
+
+### 功能特点
+
+有序列表示例：
+
+1. **自动转换**：Markdown 为微信公众号样式
+2. **丰富支持**：支持标题、段落、列表、图片等元素
+3. 一键复制，直接粘贴到微信编辑器
+4. **代码高亮**：支持代码高亮和引用样式
+5. **粗体测试**：检查列表中粗体是否正常显示
+
+### 链接示例
+
+你还可以添加链接，比如 [点击访问示例网站](https://example.com)，链接会有特殊样式。
+
+现在就试试编辑左侧的内容吧！`;
+
+        // 样式主题配置
+        const styleThemes = {
+            red: {
+                name: '红色主题',
+                paragraph: 'margin: 20px 0 !important;line-height: 1.9 !important;color: #1a1a1a !important;font-size: 17px;',
+                h1: 'font-size: 28px;font-weight: 700;color: #1a1a1a !important;line-height: 1.3 !important;margin: 40px 0 30px;text-align: center;',
+                h2: 'font-size: 24px;font-weight: 600;color: #fff !important;line-height: 1.4 !important;margin: 40px 0 24px;padding: 16px 24px;background-color: #d32f2f !important;border-radius: 4px;',
+                h3: 'font-size: 20px;font-weight: 600;color: #d32f2f !important;line-height: 1.5 !important;margin: 35px 0 20px;padding-left: 16px;border-left: 4px solid #d32f2f;',
+                image: 'max-height: 600px !important;height: auto;display: block;margin: 32px auto;border-radius: 6px;border: 2px solid #d32f2f;box-shadow: 0 4px 12px rgba(211, 47, 47, 0.12);max-width: 100%;',
+                ul: 'margin: 24px 0;padding-left: 28px;list-style-type: disc;',
+                ol: 'margin: 24px 0;padding-left: 28px;',
+                li: 'margin: 12px 0;line-height: 1.8 !important;color: #1a1a1a !important;',
+                strong: '',
+                em: 'font-style: italic;color: #d32f2f !important;',
+                code: 'background: rgba(211, 47, 47, 0.08);color: #d32f2f;padding: 2px 6px;border-radius: 3px;font-family: "Monaco", "Menlo", monospace;font-size: 0.9em;',
+                pre: 'background: #f5f5f5;padding: 16px;border-radius: 4px;overflow-x: auto;margin: 20px 0;',
+                preCode: 'font-family: "Monaco", "Menlo", monospace;font-size: 14px;line-height: 1.6;color: #333;',
+                link: 'color: #d32f2f;text-decoration: none;border-bottom: 1px solid #d32f2f;',
+                blockquote: 'margin: 16px 0;padding: 16px 20px;background: #f5f5f5;border-left: 4px solid #d32f2f;color: #666;',
+                container: 'background-color: #fff !important;padding: 8px 12px;max-width: 700px;margin: 0 auto;box-sizing: border-box;word-wrap: break-word;'
+            },
+            simple: {
+                name: '简洁主题',
+                paragraph: 'margin: 1.5em 8px;padding: 0 4px;font-size: 16px;line-height: 1.75em;letter-spacing: 0.05em;min-height: 1em;word-wrap: break-word;text-align: justify;color: #333;',
+                h1: 'font-size: 26px;font-weight: 700;color: #1a1a1a;line-height: 1.3;margin: 40px 8px 30px;text-align: center;',
+                h2: 'font-size: 22px;font-weight: 700;color: #1a1a1a;line-height: 1.4;margin: 35px 8px 20px;padding-bottom: 8px;border-bottom: 2px solid #e0e0e0;',
+                h3: 'font-size: 18px;font-weight: 700;color: #333;line-height: 1.4;margin: 30px 8px 15px;',
+                image: 'max-width: 100%;height: auto;display: block;margin: 24px auto;border-radius: 4px;',
+                ul: 'margin: 1.5em 8px;padding-left: 28px;list-style-type: disc;',
+                ol: 'margin: 1.5em 8px;padding-left: 28px;',
+                li: 'margin: 8px 0;line-height: 1.75em;color: #333;',
+                strong: '',
+                em: 'font-style: italic;',
+                code: 'background: rgba(0, 0, 0, 0.05);color: #333;padding: 2px 6px;border-radius: 3px;font-family: "Monaco", "Menlo", monospace;font-size: 0.9em;',
+                pre: 'background: #282c34;padding: 16px;border-radius: 8px;overflow-x: auto;margin: 1.5em 8px;',
+                preCode: 'font-family: "Monaco", "Menlo", monospace;font-size: 14px;line-height: 1.6;color: #abb2bf;',
+                link: 'color: #1a73e8;text-decoration: underline;',
+                blockquote: 'margin: 1.5em 8px;padding: 12px 16px;background: #ecfdf5;border-left: 3px solid #07b45a;color: #047857;border-radius: 4px;',
+                container: 'background-color: #fff;padding: 8px 12px;max-width: 700px;margin: 0 auto;box-sizing: border-box;word-wrap: break-word;'
+            },
+            'classic-elegant': {
+                name: '经典优雅主题',
+                paragraph: 'margin: 0;font-size: 16px;padding-top: 8px;padding-bottom: 8px;line-height: 1.625;color: #000;text-align: justify;',
+                h1: 'font-size: 24px;font-weight: bold;color: #000;line-height: 1.4;margin: 30px 0 20px;text-align: center;',
+                h2: 'font-size: 22px;font-weight: bold;color: #000;line-height: 1.4;margin: 30px 0 15px;',
+                h3: 'font-size: 20px;font-weight: bold;color: #000;line-height: 1.4;margin: 30px 0 15px;',
+                image: 'max-width: 100%;height: auto;display: block;margin: 20px auto;border-radius: 4px;',
+                ul: 'margin: 8px 0;padding-left: 25px;list-style-type: disc;',
+                ol: 'margin: 8px 0;padding-left: 25px;',
+                li: 'margin: 4px 0;line-height: 1.6;color: #000;',
+                strong: '',
+                em: 'font-style: italic;',
+                code: 'font-size: 14px;font-family: "Operator Mono", Consolas, Monaco, Menlo, monospace;padding: 2px 4px;border-radius: 4px;margin: 0 2px;color: #1e6bb8;background-color: rgba(27, 31, 35, 0.05);',
+                pre: 'background: #f6f8fa;padding: 16px;border-radius: 6px;overflow-x: auto;margin: 16px 0;',
+                preCode: 'font-family: "Operator Mono", Consolas, Monaco, Menlo, monospace;font-size: 14px;line-height: 1.6;color: #24292e;',
+                link: 'color: #1e6bb8;text-decoration: underline;',
+                blockquote: 'margin: 20px 0;font-size: 0.9em;border-left: 3px solid rgba(0, 0, 0, 0.4);background: rgba(0, 0, 0, 0.05);color: #6a737d;padding: 10px 10px 10px 20px;',
+                container: 'background-color: #fff;padding: 8px 12px;max-width: 700px;margin: 0 auto;box-sizing: border-box;word-wrap: break-word;'
+            }
+        };
+
+        const input = document.getElementById('markdown-input');
+        const preview = document.getElementById('preview');
+        const themeSelect = document.getElementById('theme-select');
+        const styleInfo = document.getElementById('style-info');
+
+        // 样式信息文本
+        const styleInfoText = {
+            red: '正文 17px · 行高 1.9 · 段距 20px | H2 24px · H3 20px',
+            simple: '正文 16px · 行高 1.75 · 段距 24px | H2 22px · H3 18px',
+            'classic-elegant': '正文 16px · 行高 1.625 · 段距 16px | H2 22px · H3 20px'
+        };
+
+        // 切换主题
+        function changeTheme() {
+            currentTheme = themeSelect.value;
+            styleInfo.textContent = styleInfoText[currentTheme];
+            render();
+        }
+
+        // 渲染函数
+        function render() {
+            const markdown = input.value;
+            let html = marked.parse(markdown);
+            html = applyWechatStyles(html, currentTheme);
+            preview.innerHTML = html;
+        }
+
+        // 应用微信公众号样式
+        function applyWechatStyles(html, theme) {
+            const styles = styleThemes[theme];
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            // 段落
+            doc.querySelectorAll('p').forEach(el => {
+                el.setAttribute('style', styles.paragraph);
+            });
+
+            // H1
+            doc.querySelectorAll('h1').forEach(el => {
+                el.setAttribute('style', styles.h1);
+            });
+
+            // H2
+            doc.querySelectorAll('h2').forEach(el => {
+                el.setAttribute('style', styles.h2);
+            });
+
+            // H3
+            doc.querySelectorAll('h3').forEach(el => {
+                el.setAttribute('style', styles.h3);
+            });
+
+            // 图片
+            doc.querySelectorAll('img').forEach(el => {
+                el.setAttribute('style', styles.image);
+            });
+
+            // 无序列表
+            doc.querySelectorAll('ul').forEach(el => {
+                el.setAttribute('style', styles.ul);
+            });
+
+            // 有序列表
+            doc.querySelectorAll('ol').forEach(el => {
+                el.setAttribute('style', styles.ol);
+            });
+
+            // 列表项
+            doc.querySelectorAll('li').forEach(el => {
+                el.setAttribute('style', styles.li);
+
+                // 移除列表项内的块级元素
+                el.querySelectorAll('section, div').forEach(block => {
+                    while (block.firstChild) {
+                        block.parentNode.insertBefore(block.firstChild, block);
+                    }
+                    block.remove();
+                });
+
+                // 把列表项内容包裹在 span 中，防止微信编辑器自动添加块级元素
+                const span = document.createElement('span');
+                while (el.firstChild) {
+                    span.appendChild(el.firstChild);
+                }
+                el.appendChild(span);
+            });
+
+            // 强调文本（不添加样式，使用默认加粗）
+            // doc.querySelectorAll('strong').forEach(el => {
+            //     if (styles.strong) el.setAttribute('style', styles.strong);
+            // });
+
+            // 斜体
+            doc.querySelectorAll('em').forEach(el => {
+                if (styles.em) el.setAttribute('style', styles.em);
+            });
+
+            // 代码块
+            doc.querySelectorAll('pre').forEach(el => {
+                el.setAttribute('style', styles.pre);
+                const code = el.querySelector('code');
+                if (code && styles.preCode) {
+                    code.setAttribute('style', styles.preCode);
+                }
+            });
+
+            // 行内代码
+            doc.querySelectorAll('code').forEach(el => {
+                if (!el.parentElement || el.parentElement.tagName !== 'PRE') {
+                    el.setAttribute('style', styles.code);
+                }
+            });
+
+            // 链接
+            doc.querySelectorAll('a').forEach(el => {
+                el.setAttribute('style', styles.link);
+                el.setAttribute('target', '_blank');
+            });
+
+            // 引用
+            doc.querySelectorAll('blockquote').forEach(el => {
+                el.setAttribute('style', styles.blockquote);
+            });
+
+            // 包裹在容器中
+            const wrapper = document.createElement('section');
+            wrapper.setAttribute('style', styles.container);
+            wrapper.innerHTML = doc.body.innerHTML;
+
+            // 特别处理：让第一个元素的上边距为 0
+            const firstChild = wrapper.firstElementChild;
+            if (firstChild) {
+                const currentStyle = firstChild.getAttribute('style') || '';
+                // 直接添加 margin-top: 0，覆盖原有的上边距，保留左右边距
+                firstChild.setAttribute('style', currentStyle + 'margin-top: 0 !important;');
+            }
+
+            return wrapper.outerHTML;
+        }
+
+        // 复制到剪贴板
+        async function copyToClipboard() {
+            const content = preview.innerHTML;
+
+            // 调试：在控制台打印HTML
+            console.log('复制的HTML:', content);
+
+            try {
+                // 创建临时元素
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = content;
+                tempDiv.style.position = 'absolute';
+                tempDiv.style.left = '-9999px';
+                document.body.appendChild(tempDiv);
+
+                // 选择内容
+                const range = document.createRange();
+                range.selectNodeContents(tempDiv);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+
+                // 复制
+                document.execCommand('copy');
+
+                // 清理
+                selection.removeAllRanges();
+                document.body.removeChild(tempDiv);
+
+                showToast('复制成功！可以粘贴到微信公众号编辑器了');
+            } catch (err) {
+                showToast('复制失败，请手动复制');
+                console.error('复制失败:', err);
+            }
+        }
+
+        // 显示提示
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        // 监听输入
+        input.addEventListener('input', render);
+
+        // 初始化
+        input.value = defaultMarkdown;
+        render();
+    </script>
+</body>
+</html>
